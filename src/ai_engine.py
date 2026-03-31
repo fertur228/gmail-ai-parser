@@ -1,4 +1,4 @@
-"""Gemini-based email analysis: relevance, category, summary, optional event ISO time."""
+"""LLM-based email analysis (Groq): relevance, category, summary, optional event ISO time."""
 
 from __future__ import annotations
 
@@ -7,7 +7,9 @@ import os
 import re
 from typing import Any, Literal, TypedDict
 
-import google.generativeai as genai
+from groq import Groq
+
+DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
 
 SYSTEM_PROMPT = """You are an expert email triage assistant for a busy professional.
 
@@ -141,7 +143,7 @@ DEFAULT_ANALYSIS: EmailAnalysis = {
 
 
 def normalize_analysis(data: dict[str, Any] | None) -> EmailAnalysis:
-    """Coerce Gemini JSON into EmailAnalysis; never raises — bad input maps to safe defaults."""
+    """Coerce model JSON into EmailAnalysis; never raises — bad input maps to safe defaults."""
     if not data:
         return dict(DEFAULT_ANALYSIS)
 
@@ -196,46 +198,45 @@ def normalize_analysis(data: dict[str, Any] | None) -> EmailAnalysis:
     return out
 
 
-def _response_text(response: Any) -> str:
-    try:
-        t = getattr(response, "text", None)
-        if t:
-            return str(t)
-    except (ValueError, AttributeError):
-        pass
-    parts: list[str] = []
-    if getattr(response, "candidates", None):
-        for c in response.candidates:
-            content = getattr(c, "content", None)
-            if content and getattr(content, "parts", None):
-                for p in content.parts:
-                    txt = getattr(p, "text", None)
-                    if txt:
-                        parts.append(txt)
-    return "".join(parts)
-
-
 class AIEngine:
-    """Gemini client for structured email analysis."""
+    """Groq (Llama) client for structured email analysis and digests."""
 
     def __init__(
         self,
         api_key: str | None = None,
         model_name: str | None = None,
     ) -> None:
-        key = api_key or os.environ.get("GEMINI_API_KEY")
+        key = api_key or os.getenv("GROQ_API_KEY")
         if not key:
             raise ValueError(
-                "Missing API key: pass api_key= or set GEMINI_API_KEY in the environment"
+                "Missing API key: pass api_key= or set GROQ_API_KEY in the environment"
             )
-        genai.configure(api_key=key)
-        raw = (model_name or os.environ.get("GEMINI_MODEL") or "").strip()
-        raw = raw.removeprefix("models/").strip()
-        self._model_name = raw or "gemini-1.5-flash-latest"
-        self._model = genai.GenerativeModel(
-            model_name=self._model_name,
-            system_instruction=SYSTEM_PROMPT,
+        self.client = Groq(api_key=key)
+        self._model_id = (
+            (model_name or os.getenv("GROQ_MODEL") or "").strip()
+            or DEFAULT_GROQ_MODEL
         )
+
+    def _chat(
+        self,
+        system: str,
+        user: str,
+        *,
+        temperature: float,
+        model: str | None = None,
+    ) -> str:
+        mid = model or self._model_id
+        chat_completion = self.client.chat.completions.create(
+            model=mid,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=temperature,
+        )
+        choice = chat_completion.choices[0]
+        content = choice.message.content if choice and choice.message else None
+        return (content or "").strip()
 
     def analyze_email(
         self,
@@ -258,14 +259,12 @@ class AIEngine:
             subject=subject or "",
             body=body or "",
         )
-        response = self._model.generate_content(
+        raw = self._chat(
+            SYSTEM_PROMPT,
             payload,
-            generation_config={
-                "temperature": 0.2,
-                "response_mime_type": "application/json",
-            },
+            temperature=0.2,
+            model="llama-3.3-70b-versatile",
         )
-        raw = _response_text(response)
         parsed = extract_json_object_from_text(raw)
         return normalize_analysis(parsed)
 
@@ -287,11 +286,11 @@ class AIEngine:
             lines.append(f"[{cat}] {sub}\n  {summ}")
         blob = "\n".join(lines)
         prompt = WEEKLY_REPORT_USER_PROMPT.format(lines=blob)
-        response = self._model.generate_content(
+        text = self._chat(
+            "You follow instructions precisely and write fluent Russian.",
             prompt,
-            generation_config={"temperature": 0.35},
+            temperature=0.35,
         )
-        text = _response_text(response).strip()
         return text or "Не удалось сформировать отчёт."
 
     def generate_daily_digest(self, entries: list[dict[str, Any]]) -> str:
@@ -306,9 +305,9 @@ class AIEngine:
             lines.append(f"[{cat}] {sub}\n  {summ}")
         blob = "\n".join(lines)
         prompt = DAILY_DIGEST_USER_PROMPT.format(lines=blob)
-        response = self._model.generate_content(
+        text = self._chat(
+            "You follow instructions precisely and write fluent Russian.",
             prompt,
-            generation_config={"temperature": 0.35},
+            temperature=0.35,
         )
-        text = _response_text(response).strip()
         return text or "Не удалось сформировать итоги дня."

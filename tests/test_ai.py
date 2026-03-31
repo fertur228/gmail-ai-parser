@@ -1,4 +1,4 @@
-"""AIEngine JSON parsing and Gemini mocks — no live API calls."""
+"""AIEngine JSON parsing and Groq mocks — no live API calls."""
 
 from __future__ import annotations
 
@@ -95,31 +95,46 @@ def test_normalize_analysis_invalid_category_defaults_to_info():
     assert n["category"] == "info"
 
 
-@patch("src.ai_engine.genai.GenerativeModel")
-def test_analyze_email_uses_mock_and_parses_json(mock_model_cls: MagicMock):
-    mock_resp = MagicMock()
-    mock_resp.text = '{"relevance_score": 0.85, "category": "event", "summary": "Meet Friday.", "event_datetime_iso": "2026-04-01T14:00:00+00:00", "is_interesting": true}'
-    inst = MagicMock()
-    inst.generate_content.return_value = mock_resp
-    mock_model_cls.return_value = inst
+def _make_groq_completion(content: str) -> MagicMock:
+    msg = MagicMock()
+    msg.content = content
+    choice = MagicMock()
+    choice.message = msg
+    comp = MagicMock()
+    comp.choices = [choice]
+    return comp
 
-    eng = AIEngine(api_key="dummy", model_name="gemini-test")
+
+@patch("src.ai_engine.Groq")
+def test_analyze_email_uses_mock_and_parses_json(mock_groq: MagicMock) -> None:
+    client = MagicMock()
+    client.chat.completions.create.return_value = _make_groq_completion(
+        '{"relevance_score": 0.85, "category": "event", "summary": "Meet Friday.", '
+        '"event_datetime_iso": "2026-04-01T14:00:00+00:00", "is_interesting": true}'
+    )
+    mock_groq.return_value = client
+
+    eng = AIEngine(api_key="dummy", model_name="llama-test")
     result = eng.analyze_email("Invite", "We meet at 2pm UTC Friday.", "meetings")
 
     assert result["relevance_score"] == pytest.approx(0.85)
     assert result["category"] == "event"
     assert "Friday" in result["summary"] or "meet" in result["summary"].lower()
     assert result["event_datetime_iso"] is not None
-    inst.generate_content.assert_called_once()
+    client.chat.completions.create.assert_called_once()
+    call_kw = client.chat.completions.create.call_args.kwargs
+    assert call_kw["model"] == "llama-3.3-70b-versatile"
 
 
-@patch("src.ai_engine.genai.GenerativeModel")
-def test_analyze_email_bad_model_output_normalizes_gracefully(mock_model_cls: MagicMock):
-    mock_resp = MagicMock()
-    mock_resp.text = "%%% not valid json at all $$$"
-    inst = MagicMock()
-    inst.generate_content.return_value = mock_resp
-    mock_model_cls.return_value = inst
+@patch("src.ai_engine.Groq")
+def test_analyze_email_bad_model_output_normalizes_gracefully(
+    mock_groq: MagicMock,
+) -> None:
+    client = MagicMock()
+    client.chat.completions.create.return_value = _make_groq_completion(
+        "%%% not valid json at all $$$"
+    )
+    mock_groq.return_value = client
 
     eng = AIEngine(api_key="dummy")
     result = eng.analyze_email("S", "B", "")
