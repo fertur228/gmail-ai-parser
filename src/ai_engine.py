@@ -231,7 +231,7 @@ class AIEngine:
         genai.configure(api_key=key)
         self._model_name = model_name or os.environ.get(
             "GEMINI_MODEL",
-            "gemini-2.0-flash",
+            "gemini-1.5-flash",
         )
         self._model = genai.GenerativeModel(
             model_name=self._model_name,
