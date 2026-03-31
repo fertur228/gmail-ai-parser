@@ -15,6 +15,9 @@ from googleapiclient.discovery import build
 
 GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 
+# Gmail evaluates newer_than:1d at query time (last 24h from “now” in the mailbox).
+GMAIL_UNREAD_LIST_QUERY = "is:unread newer_than:1d -from:linkedin.com"
+
 
 def strip_html_to_text(html: str) -> str:
     """Remove tags/script noise and collapse whitespace for LLM-friendly text."""
@@ -138,7 +141,11 @@ class GmailClient:
         user = self._service.users()
         listed = (
             user.messages()
-            .list(userId="me", q="is:unread", maxResults=max_results)
+            .list(
+                userId="me",
+                q=GMAIL_UNREAD_LIST_QUERY,
+                maxResults=max_results,
+            )
             .execute()
         )
         refs = listed.get("messages") or []
@@ -160,4 +167,8 @@ class GmailClient:
                     "body_text": body_text,
                 }
             )
+        print(
+            f"[Gmail] Найдено новых писем: {len(out)} (после фильтрации LinkedIn).",
+            flush=True,
+        )
         return out

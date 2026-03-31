@@ -122,3 +122,7 @@ def test_fetch_unread_emails_uses_mocked_api(
     assert rows[0]["subject"] == "Invoice #9"
     assert "Invoice" in rows[0]["body_text"]
     messages_api.list.assert_called_once()
+    q = messages_api.list.call_args.kwargs.get("q", "")
+    assert "is:unread" in q
+    assert "newer_than:1d" in q
+    assert "-from:linkedin.com" in q
