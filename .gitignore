@@ -1,0 +1,35 @@
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Secrets and local OAuth / tokens
+.env
+credentials.json
+token.json
+**/token.json
+*.pickle
+*.pkl
+
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Tests / coverage
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# IDE / editor
+.vscode/
+.cursor/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Supabase CLI local state (not migrations)
+supabase/.temp/

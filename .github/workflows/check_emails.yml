@@ -1,0 +1,38 @@
+# Scans Gmail + sends Telegram notifications + daily/weekly digests.
+# Inline button callbacks (Calendar / Tasks / 👍👎) are handled by Supabase Edge Function telegram-webhook, not by this job.
+name: Check emails
+
+on:
+  schedule:
+    # Every 15 minutes (UTC). Adjust if you want a different window.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  run-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write Google OAuth credentials
+        env:
+          CREDENTIALS_JSON: ${{ secrets.CREDENTIALS_JSON }}
+        run: |
+          python -c "import os, pathlib; pathlib.Path('credentials.json').write_text(os.environ['CREDENTIALS_JSON'], encoding='utf-8')"
+
+      - name: Run main
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          TELEGRAM_ID: ${{ secrets.TELEGRAM_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GMAIL_CREDENTIALS_PATH: credentials.json
+        run: python main.py
