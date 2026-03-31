@@ -229,10 +229,9 @@ class AIEngine:
                 "Missing API key: pass api_key= or set GEMINI_API_KEY in the environment"
             )
         genai.configure(api_key=key)
-        self._model_name = model_name or os.environ.get(
-            "GEMINI_MODEL",
-            "gemini-1.5-flash",
-        )
+        raw = (model_name or os.environ.get("GEMINI_MODEL") or "").strip()
+        raw = raw.removeprefix("models/").strip()
+        self._model_name = raw or "gemini-1.5-flash-latest"
         self._model = genai.GenerativeModel(
             model_name=self._model_name,
             system_instruction=SYSTEM_PROMPT,
