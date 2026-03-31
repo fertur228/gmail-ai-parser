@@ -128,6 +128,8 @@ async def _run_async() -> None:
         emails = gmail.fetch_unread_emails()
         for mail in emails:
             mid = mail["id"]
+            subject = mail.get("subject") or "(без темы)"
+            print(f"[обработка] Проверяю письмо: {subject}", flush=True)
             # Дубликат в Supabase → не вызываем Groq и не шлём в Telegram.
             if db.is_message_processed(mid):
                 continue
